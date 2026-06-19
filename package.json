@@ -1,0 +1,20 @@
+{
+  "name": "lsf_record_yourself",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prettier": "prettier --write \"**/*.{js,ts,json,md}\"",
+    "frontend": "cd frontend && npm start",
+    "backend": "cd backend && fastapi dev",
+    "start-app": "concurrently \"npm run frontend\" \"npm run backend\""
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "prettier": "3.8.4"
+  }
+}
