@@ -1,0 +1,83 @@
+.leaderboard-page {
+  min-height: 100vh;
+  background: #0f172a;
+  color: #f1f5f9;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.btn-back {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: #818cf8;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+  margin-bottom: 1.5rem;
+}
+
+.leaderboard-page h1 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+
+.lb-subtitle {
+  color: #94a3b8;
+  margin: 0 0 2rem;
+}
+
+.lb-loading,
+.lb-empty {
+  color: #64748b;
+}
+
+.lb-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lb-entry {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #1e293b;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+}
+
+.lb-entry--me {
+  border: 2px solid #6366f1;
+  background: #1e1b4b;
+}
+
+.lb-rank {
+  width: 36px;
+  font-weight: 700;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.lb-entry:nth-child(1) .lb-rank { color: #fbbf24; }
+.lb-entry:nth-child(2) .lb-rank { color: #94a3b8; }
+.lb-entry:nth-child(3) .lb-rank { color: #b45309; }
+
+.lb-pseudo {
+  flex: 1;
+  font-weight: 600;
+}
+
+.lb-score {
+  color: #4ade80;
+  font-weight: 700;
+}

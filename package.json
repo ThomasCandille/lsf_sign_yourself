@@ -10,8 +10,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "prettier": "prettier --write \"**/*.{js,ts,json,md}\"",
     "frontend": "cd frontend && npm start",
-    "backend": "cd backend && fastapi dev",
-    "start-app": "concurrently \"npm run frontend\" \"npm run backend\""
+    "backend": "cd backend && .venv/bin/uvicorn api:app --reload --port 8000",
+    "dev": "concurrently --names \"frontend,backend\" --prefix-colors \"cyan,yellow\" \"npm run frontend\" \"npm run backend\""
   },
   "devDependencies": {
     "concurrently": "^10.0.3",

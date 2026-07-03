@@ -1,1 +1,12 @@
 node_modules
+.env
+
+backend/service_account.json
+backend/.env
+backend/.env.local
+backend/.env.production
+backend/.env.test
+backend/.venv
+backend/__pycache__
+
+frontend/.env
