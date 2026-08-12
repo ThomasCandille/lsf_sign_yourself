@@ -8,5 +8,7 @@ backend/.env.production
 backend/.env.test
 backend/.venv
 backend/__pycache__
+backend/videos
 
 frontend/.env
+frontend/build

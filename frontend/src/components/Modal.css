@@ -5,6 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 1rem;
   z-index: 100;
 }
 
@@ -12,12 +13,14 @@
   background: #fff;
   border-radius: 12px;
   padding: 2rem;
-  max-width: 520px;
-  width: 90%;
+  max-width: 620px;
+  width: min(100%, 620px);
+  max-height: min(92vh, 760px);
+  overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
-.tensor-preview {
+.data-preview {
   margin: 1rem 0;
   background: #1e293b;
   border-radius: 10px;
@@ -28,12 +31,12 @@
   gap: 0.5rem;
 }
 
-.tensor-preview svg {
+.data-preview svg {
   width: 140px;
   height: auto;
 }
 
-.tensor-caption {
+.data-caption {
   color: #94a3b8;
   font-size: 0.78rem;
   text-align: center;
@@ -51,8 +54,28 @@
   margin: 0.5rem 0;
 }
 
+.modal-lead {
+  font-size: 1rem;
+}
+
+.consent-list {
+  margin: 1rem 0 0;
+  padding-left: 1.2rem;
+  color: #374151;
+  line-height: 1.55;
+}
+
+.consent-list li + li {
+  margin-top: 0.65rem;
+}
+
+.consent-list strong {
+  color: #111827;
+}
+
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 1.5rem;
   justify-content: flex-end;
@@ -89,6 +112,35 @@
 
 .btn-secondary:hover {
   background: #d1d5db;
+}
+
+@media (max-width: 560px) {
+  .modal-overlay {
+    align-items: flex-start;
+    padding: 0.75rem;
+  }
+
+  .modal {
+    padding: 1rem;
+    max-height: calc(100dvh - 1.5rem);
+  }
+
+  .modal h2 {
+    font-size: 1.2rem;
+  }
+
+  .data-preview svg {
+    width: 112px;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+  }
 }
 
 .pseudo-input {

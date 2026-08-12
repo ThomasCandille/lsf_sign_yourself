@@ -1,21 +1,29 @@
 import axios from "axios";
 import { Word, LeaderboardEntry } from "./types";
 
-const BASE = "http://localhost:8000";
+const BASE = process.env.REACT_APP_API_BASE_URL ?? "http://localhost:8000";
+const apiClient = axios.create({
+  baseURL: BASE,
+  timeout: 15000,
+  withCredentials: false,
+  headers: {
+    Accept: "application/json",
+  },
+});
 
 export async function fetchWords(): Promise<Word[]> {
-  const { data } = await axios.get<Word[]>(`${BASE}/words`);
+  const { data } = await apiClient.get<Word[]>("/words");
   return data;
 }
 
 export async function checkPseudo(pseudo: string): Promise<void> {
-  await axios.post(`${BASE}/check-pseudo`, { pseudo });
+  await apiClient.post("/check-pseudo", { pseudo });
 }
 
 export async function uploadSign(
   wordId: string,
   pseudo: string,
-  blob: Blob
+  blob: Blob,
 ): Promise<{ count: number }> {
   const form = new FormData();
   form.append("word_id", wordId);
@@ -23,12 +31,19 @@ export async function uploadSign(
   form.append("video", blob, "sign.webm");
   const { data } = await axios.post<{ ok: boolean; count: number }>(
     `${BASE}/upload`,
-    form
+    form,
+    {
+      timeout: 30000,
+      withCredentials: false,
+      headers: {
+        Accept: "application/json",
+      },
+    },
   );
   return data;
 }
 
 export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
-  const { data } = await axios.get<LeaderboardEntry[]>(`${BASE}/leaderboard`);
+  const { data } = await apiClient.get<LeaderboardEntry[]>("/leaderboard");
   return data;
 }

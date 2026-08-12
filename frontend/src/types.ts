@@ -2,6 +2,7 @@ export interface Word {
   id: string;
   label: string;
   video_url: string;
+  sample_count: number;
 }
 
 export interface LeaderboardEntry {
@@ -11,6 +12,7 @@ export interface LeaderboardEntry {
 
 export type AppStep =
   | "consent"
+  | "declined"
   | "pseudo"
   | "camera"
   | "signing"
