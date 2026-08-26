@@ -1,6 +1,8 @@
 import React from "react";
 import "./Modal.css";
 
+const tensorExampleImage = `${process.env.PUBLIC_URL}/lsf-tenseur-exemple.png`;
+
 interface Props {
   onAccept: () => void;
   onDecline: () => void;
@@ -29,9 +31,27 @@ export default function ConsentModal({ onAccept, onDecline }: Props) {
           </li>
           <li>
             <strong>Pour l'entraînement :</strong> après validation, les vidéos
-            pourront être transformées en tenseurs si elles sont assez qualitatives pour le modèle LSF.
+            pourront être transformées en tenseurs (coordonnées mathématiques
+            des parties du corps) si elles sont assez qualitatives pour le
+            modèle LSF.
           </li>
         </ul>
+
+        <figure className="consent-tensor-example">
+          <img
+            src={tensorExampleImage}
+            alt="Exemple de transformation d'une vidéo en tenseur de points du corps"
+            width="706"
+            height="691"
+            loading="lazy"
+            decoding="async"
+          />
+          <figcaption>
+            Exemple de tenseur : la vidéo sert à extraire des points du corps
+            utilisables par le modèle.
+          </figcaption>
+        </figure>
+
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={onAccept}>
             J'ai compris et je contribue

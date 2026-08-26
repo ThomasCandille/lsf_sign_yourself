@@ -12,7 +12,8 @@ La vidéo brute validée est ensuite enregistrée dans l'espace de stockage du p
 
 ## Stockage des vidéos
 
-Les vidéos sont stockées côté serveur dans le dossier défini par `VIDEO_STORAGE_PATH`.
+Les vidéos sont stockées côté serveur en MP4 dans le dossier défini par `VIDEO_STORAGE_PATH`.
+Le navigateur peut encore envoyer du WebM selon son support, mais le backend convertit ces vidéos en MP4 avant stockage et export admin.
 
 En local, la valeur par défaut est :
 
@@ -22,6 +23,8 @@ DATABASE_URL=sqlite+aiosqlite:///./lsf.db
 ```
 
 Depuis `backend/`, cela crée donc `backend/videos`. Ce dossier est ignoré par Git.
+
+La conversion utilise FFmpeg via la dépendance Python `imageio-ffmpeg`.
 
 Pour récupérer les vidéos depuis l'API, définissez un token admin :
 

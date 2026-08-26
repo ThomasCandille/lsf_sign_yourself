@@ -23,7 +23,7 @@ interface Props {
 }
 
 const COUNTDOWN_SEC = 3;
-const RECORD_SEC = 2;
+const RECORD_SEC = 3;
 
 function getSafeErrorMessage(err: any, fallback: string) {
   const detail = err.response?.data?.detail;
@@ -45,8 +45,11 @@ export default function SigningScreen({
   const [errorMessage, setErrorMessage] = useState("");
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const [isChoosingNext, setIsChoosingNext] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUploadingRef = useRef(false);
+  const isChoosingNextRef = useRef(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   const sampleCount = word.sample_count ?? 0;
@@ -144,7 +147,9 @@ export default function SigningScreen({
   }
 
   async function uploadRecording() {
-    if (!recordedBlob) return;
+    if (!recordedBlob || isUploadingRef.current) return;
+    isUploadingRef.current = true;
+    setIsUploading(true);
     setPhase("uploading");
     setErrorMessage("");
     try {
@@ -160,10 +165,18 @@ export default function SigningScreen({
         ),
       );
       setPhase("error");
+    } finally {
+      isUploadingRef.current = false;
+      setIsUploading(false);
     }
   }
 
   async function handleNextWord() {
+    if (isChoosingNextRef.current) {
+      return;
+    }
+
+    isChoosingNextRef.current = true;
     setIsChoosingNext(true);
     try {
       await onNext();
@@ -171,6 +184,7 @@ export default function SigningScreen({
       setErrorMessage("");
       setPhase(isCameraReady ? "ready" : "loading");
     } finally {
+      isChoosingNextRef.current = false;
       setIsChoosingNext(false);
     }
   }
@@ -201,6 +215,15 @@ export default function SigningScreen({
             />
           </div>
 
+          <div
+            className="mobile-section-separator mobile-section-separator--before-camera"
+            aria-hidden="true"
+          />
+          <div
+            className="mobile-section-separator mobile-section-separator--before-leaderboard"
+            aria-hidden="true"
+          />
+
           <div className="inline-leaderboard">
             <h3 className="lb-inline-title">Classement</h3>
             <p className="my-score">
@@ -228,32 +251,39 @@ export default function SigningScreen({
         {/* Colonne droite : caméra + actions */}
         <div className="signing-right">
           <div className="camera-section">
-            <CameraView
-              ref={cameraRef}
-              onReady={handleCameraReady}
-              onError={handleCameraError}
-            />
-            {phase === "countdown" && (
-              <div className="countdown-overlay">
-                <span>{countdown === 0 ? "GO !" : countdown}</span>
-              </div>
-            )}
-            {phase === "recording" && (
-              <div className="recording-indicator">
-                <span className="rec-dot" /> Enregistrement…
-              </div>
-            )}
-            {phase === "review" && previewUrl && (
-              <div className="preview-overlay">
-                <video
-                  src={previewUrl}
-                  controls
-                  muted
-                  playsInline
-                  className="recording-preview"
-                />
-              </div>
-            )}
+            <p className="camera-guidance">
+              Après le compte à rebours, vous aurez 3 secondes pour faire le
+              signe. La capture s'arrête automatiquement. Gardez le haut du
+              corps visible, comme dans la vidéo d'exemple.
+            </p>
+            <div className="camera-capture">
+              <CameraView
+                ref={cameraRef}
+                onReady={handleCameraReady}
+                onError={handleCameraError}
+              />
+              {phase === "countdown" && (
+                <div className="countdown-overlay">
+                  <span>{countdown === 0 ? "GO !" : countdown}</span>
+                </div>
+              )}
+              {phase === "recording" && (
+                <div className="recording-indicator">
+                  <span className="rec-dot" /> Enregistrement…
+                </div>
+              )}
+              {phase === "review" && previewUrl && (
+                <div className="preview-overlay">
+                  <video
+                    src={previewUrl}
+                    controls
+                    muted
+                    playsInline
+                    className="recording-preview"
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="signing-actions">
@@ -279,7 +309,12 @@ export default function SigningScreen({
                   validez.
                 </p>
                 <div className="review-actions">
-                  <button className="btn btn-primary" onClick={uploadRecording}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={uploadRecording}
+                    disabled={isUploading}
+                    aria-busy={isUploading}
+                  >
                     Envoyer cette vidéo
                   </button>
                   <button
@@ -301,6 +336,7 @@ export default function SigningScreen({
                   className="btn btn-primary"
                   onClick={handleNextWord}
                   disabled={isChoosingNext}
+                  aria-busy={isChoosingNext}
                 >
                   {isChoosingNext ? "Choix du mot..." : "Mot suivant"}
                 </button>
@@ -314,6 +350,8 @@ export default function SigningScreen({
                     <button
                       className="btn btn-primary"
                       onClick={uploadRecording}
+                      disabled={isUploading}
+                      aria-busy={isUploading}
                     >
                       Réessayer l'envoi
                     </button>

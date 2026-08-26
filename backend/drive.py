@@ -1,9 +1,17 @@
 import os
 import tempfile
 import re
+import subprocess
 import uuid
 import zipfile
 from pathlib import Path
+
+
+DEFAULT_CONVERSION_TIMEOUT_SECONDS = 120
+
+
+class VideoConversionError(RuntimeError):
+    pass
 
 
 def _safe_part(value: str) -> str:
@@ -21,24 +29,118 @@ def get_video_storage_path() -> str:
     return _ensure_storage_dir("VIDEO_STORAGE_PATH", "./videos")
 
 
+def _get_ffmpeg_executable() -> str:
+    override = os.getenv("FFMPEG_BINARY")
+    if override:
+        return override
+
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except ImportError:
+        return "ffmpeg"
+
+
+def _conversion_timeout_seconds() -> int:
+    raw_timeout = os.getenv(
+        "VIDEO_CONVERSION_TIMEOUT_SECONDS",
+        str(DEFAULT_CONVERSION_TIMEOUT_SECONDS),
+    )
+    try:
+        return max(1, int(raw_timeout))
+    except ValueError:
+        return DEFAULT_CONVERSION_TIMEOUT_SECONDS
+
+
+def _webm_to_mp4(video_bytes: bytes) -> bytes:
+    with tempfile.TemporaryDirectory(prefix="lsf-video-convert-") as temp_dir:
+        input_path = Path(temp_dir) / "input.webm"
+        output_path = Path(temp_dir) / "output.mp4"
+        input_path.write_bytes(video_bytes)
+
+        command = [
+            _get_ffmpeg_executable(),
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(input_path),
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=_conversion_timeout_seconds(),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise VideoConversionError("Impossible de convertir la vidéo en MP4") from exc
+
+        if result.returncode != 0 or not output_path.exists():
+            raise VideoConversionError("Impossible de convertir la vidéo en MP4")
+
+        return output_path.read_bytes()
+
+
+def _video_bytes_as_mp4(video_bytes: bytes, content_type: str | None) -> bytes:
+    media_type = (content_type or "").split(";")[0].strip().lower()
+    if media_type == "video/mp4":
+        return video_bytes
+    if media_type == "video/webm":
+        return _webm_to_mp4(video_bytes)
+    raise VideoConversionError("Format vidéo non convertible")
+
+
+def _archive_name_for_mp4(relative_path: Path) -> str:
+    return str(relative_path.with_suffix(".mp4"))
+
+
+def _unique_archive_name(archive_name: str, used_names: set[str]) -> str:
+    if archive_name not in used_names:
+        used_names.add(archive_name)
+        return archive_name
+
+    path = Path(archive_name)
+    for index in range(2, 10000):
+        candidate = str(path.with_name(f"{path.stem}-{index}{path.suffix}"))
+        if candidate not in used_names:
+            used_names.add(candidate)
+            return candidate
+
+    raise RuntimeError("Impossible de créer un nom de fichier unique")
+
+
 def upload_video(
     video_bytes: bytes,
     word_id: str,
     pseudo: str,
     content_type: str | None,
 ) -> str:
-    """Save the raw submitted video for human validation. Returns the file path."""
+    """Save the submitted video as MP4 for human validation. Returns the file path."""
     storage_path = get_video_storage_path()
-    media_type = (content_type or "").split(";")[0].strip().lower()
-    extension = ".webm" if media_type == "video/webm" else ".bin"
+    mp4_bytes = _video_bytes_as_mp4(video_bytes, content_type)
 
     filename = (
         f"{_safe_part(word_id)}__{_safe_part(pseudo)}__"
-        f"{uuid.uuid4().hex}{extension}"
+        f"{uuid.uuid4().hex}.mp4"
     )
     filepath = os.path.join(storage_path, filename)
     with open(filepath, "wb") as f:
-        f.write(video_bytes)
+        f.write(mp4_bytes)
     return filepath
 
 
@@ -69,6 +171,7 @@ def get_video_storage_stats() -> dict[str, int | str]:
 def create_videos_archive() -> tuple[str, int]:
     storage_root = Path(get_video_storage_path()).resolve()
     video_files = list_video_files()
+    used_names: set[str] = set()
     archive = tempfile.NamedTemporaryFile(
         prefix="lsf-videos-",
         suffix=".zip",
@@ -83,9 +186,19 @@ def create_videos_archive() -> tuple[str, int]:
         compression=zipfile.ZIP_DEFLATED,
     ) as archive_file:
         for video_path in video_files:
-            archive_file.write(
-                video_path,
-                arcname=video_path.resolve().relative_to(storage_root),
-            )
+            relative_path = video_path.resolve().relative_to(storage_root)
+            if video_path.suffix.lower() == ".webm":
+                archive_file.writestr(
+                    _unique_archive_name(
+                        _archive_name_for_mp4(relative_path),
+                        used_names,
+                    ),
+                    _webm_to_mp4(video_path.read_bytes()),
+                )
+            else:
+                archive_file.write(
+                    video_path,
+                    arcname=_unique_archive_name(str(relative_path), used_names),
+                )
 
     return archive_path, len(video_files)

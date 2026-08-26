@@ -30,7 +30,8 @@ RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "120"))
 ADMIN_DOWNLOAD_TOKEN = os.getenv("ADMIN_DOWNLOAD_TOKEN", "")
 WEBM_MAGIC = b"\x1a\x45\xdf\xa3"
-ALLOWED_VIDEO_TYPES = {"video/webm"}
+MP4_FTYP_MARKER = b"ftyp"
+ALLOWED_VIDEO_TYPES = {"video/webm", "video/mp4"}
 WORD_ID_PATTERN = re.compile(r"^[a-z0-9-]{1,64}$")
 PSEUDO_ALLOWED_PUNCTUATION = {" ", ".", "_", "-", "'", "’"}
 _rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
@@ -169,7 +170,9 @@ def validate_video_upload(video: UploadFile, video_bytes: bytes) -> None:
         raise HTTPException(400, "Vidéo vide")
     if len(video_bytes) > MAX_VIDEO_BYTES:
         raise HTTPException(413, "Vidéo trop volumineuse")
-    if not video_bytes.startswith(WEBM_MAGIC):
+    if content_type == "video/webm" and not video_bytes.startswith(WEBM_MAGIC):
+        raise HTTPException(400, "Fichier vidéo invalide")
+    if content_type == "video/mp4" and video_bytes[4:8] != MP4_FTYP_MARKER:
         raise HTTPException(400, "Fichier vidéo invalide")
 
 

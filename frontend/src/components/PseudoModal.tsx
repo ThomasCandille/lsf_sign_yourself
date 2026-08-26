@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { checkPseudo } from "../api";
 import "./Modal.css";
 
@@ -22,32 +22,60 @@ function getPseudoError(pseudo: string) {
   return "";
 }
 
-function getSafeErrorMessage(err: any, fallback: string) {
+function getPseudoRequestError(err: any) {
   const detail = err.response?.data?.detail;
-  return typeof detail === "string" && detail.length <= 180 ? detail : fallback;
+  if (typeof detail === "string" && detail.length <= 180) {
+    return detail;
+  }
+  if (err.code === "ECONNABORTED") {
+    return "La vérification du pseudo a pris trop de temps. Réessayez.";
+  }
+  if (!err.response) {
+    return "Impossible de vérifier le pseudo. Vérifiez votre connexion puis réessayez.";
+  }
+  if (err.response.status >= 500) {
+    return "Le serveur ne peut pas vérifier le pseudo pour le moment. Réessayez dans un instant.";
+  }
+  return "Pseudo invalide";
 }
 
 export default function PseudoModal({ onConfirm }: Props) {
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const isCheckingPseudoRef = useRef(false);
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setValue(e.target.value);
+    if (error) {
+      setError("");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isCheckingPseudoRef.current) {
+      return;
+    }
+
     const trimmed = normalizePseudo(value);
     const validationError = getPseudoError(trimmed);
     if (validationError) {
       setError(validationError);
       return;
     }
+
+    isCheckingPseudoRef.current = true;
     setLoading(true);
     setError("");
     try {
       await checkPseudo(trimmed);
       onConfirm(trimmed);
     } catch (err: any) {
-      setError(getSafeErrorMessage(err, "Pseudo invalide"));
+      const requestError = getPseudoRequestError(err);
+      setError(requestError);
     } finally {
+      isCheckingPseudoRef.current = false;
       setLoading(false);
     }
   }
@@ -62,18 +90,30 @@ export default function PseudoModal({ onConfirm }: Props) {
             type="text"
             placeholder="Votre pseudo (2–20 caractères)"
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={handleChange}
             maxLength={20}
             autoComplete="nickname"
             spellCheck={false}
             autoFocus
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? "pseudo-error-feedback" : undefined}
           />
-          {error && <p className="error">{error}</p>}
+          {error && (
+            <p
+              id="pseudo-error-feedback"
+              className="error"
+              role="alert"
+              aria-live="polite"
+            >
+              {error}
+            </p>
+          )}
           <div className="modal-actions">
             <button
               className="btn btn-primary"
               type="submit"
-              disabled={loading || normalizePseudo(value).length < 2}
+              disabled={loading}
+              aria-busy={loading}
             >
               {loading ? "Vérification..." : "Continuer"}
             </button>

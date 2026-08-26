@@ -11,6 +11,11 @@ const apiClient = axios.create({
   },
 });
 
+function recordingFilename(blob: Blob): string {
+  const contentType = (blob.type || "").split(";")[0].trim().toLowerCase();
+  return contentType === "video/mp4" ? "sign.mp4" : "sign.webm";
+}
+
 export async function fetchWords(): Promise<Word[]> {
   const { data } = await apiClient.get<Word[]>("/words");
   return data;
@@ -28,7 +33,7 @@ export async function uploadSign(
   const form = new FormData();
   form.append("word_id", wordId);
   form.append("pseudo", pseudo);
-  form.append("video", blob, "sign.webm");
+  form.append("video", blob, recordingFilename(blob));
   const { data } = await axios.post<{ ok: boolean; count: number }>(
     `${BASE}/upload`,
     form,
