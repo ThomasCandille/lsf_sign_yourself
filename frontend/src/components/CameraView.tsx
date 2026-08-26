@@ -22,6 +22,7 @@ const RECORDING_MIME_TYPES = [
 const CAMERA_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   width: { ideal: 640 },
   height: { ideal: 480 },
+  aspectRatio: { ideal: RECORDING_WIDTH / RECORDING_HEIGHT },
   frameRate: { ideal: RECORDING_FRAME_RATE },
   facingMode: { ideal: "user" },
 };
@@ -36,7 +37,7 @@ function getSupportedRecordingMimeType(): string | undefined {
   );
 }
 
-function drawContainedVideoFrame(
+function drawCoveredVideoFrame(
   context: CanvasRenderingContext2D,
   video: HTMLVideoElement,
 ) {
@@ -49,7 +50,7 @@ function drawContainedVideoFrame(
     return;
   }
 
-  const scale = Math.min(
+  const scale = Math.max(
     RECORDING_WIDTH / sourceWidth,
     RECORDING_HEIGHT / sourceHeight,
   );
@@ -113,7 +114,7 @@ const CameraView = forwardRef<CameraViewHandle, Props>(
       context.imageSmoothingEnabled = true;
 
       const renderFrame = () => {
-        drawContainedVideoFrame(context, video);
+        drawCoveredVideoFrame(context, video);
         animationFrameRef.current = window.requestAnimationFrame(renderFrame);
       };
 

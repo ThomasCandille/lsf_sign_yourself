@@ -68,9 +68,8 @@ def _convert_to_standard_mp4(video_bytes: bytes, input_suffix: str) -> bytes:
 
         video_filter = (
             f"scale={STANDARD_VIDEO_WIDTH}:{STANDARD_VIDEO_HEIGHT}:"
-            "force_original_aspect_ratio=decrease,"
-            f"pad={STANDARD_VIDEO_WIDTH}:{STANDARD_VIDEO_HEIGHT}:"
-            "(ow-iw)/2:(oh-ih)/2:black,"
+            "force_original_aspect_ratio=increase,"
+            f"crop={STANDARD_VIDEO_WIDTH}:{STANDARD_VIDEO_HEIGHT},"
             "setsar=1"
         )
         command = [
