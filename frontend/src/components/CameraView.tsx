@@ -1,10 +1,15 @@
 import React, {
   useRef,
   useEffect,
+  useCallback,
   forwardRef,
   useImperativeHandle,
 } from "react";
 import "./CameraView.css";
+
+const RECORDING_WIDTH = 640;
+const RECORDING_HEIGHT = 480;
+const RECORDING_FRAME_RATE = 30;
 
 const RECORDING_MIME_TYPES = [
   "video/mp4;codecs=avc1.42E01E",
@@ -17,7 +22,7 @@ const RECORDING_MIME_TYPES = [
 const CAMERA_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   width: { ideal: 640 },
   height: { ideal: 480 },
-  frameRate: { ideal: 30 },
+  frameRate: { ideal: RECORDING_FRAME_RATE },
   facingMode: { ideal: "user" },
 };
 
@@ -29,6 +34,31 @@ function getSupportedRecordingMimeType(): string | undefined {
   return RECORDING_MIME_TYPES.find((mimeType) =>
     MediaRecorder.isTypeSupported(mimeType),
   );
+}
+
+function drawContainedVideoFrame(
+  context: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+) {
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, RECORDING_WIDTH, RECORDING_HEIGHT);
+
+  const sourceWidth = video.videoWidth;
+  const sourceHeight = video.videoHeight;
+  if (!sourceWidth || !sourceHeight) {
+    return;
+  }
+
+  const scale = Math.min(
+    RECORDING_WIDTH / sourceWidth,
+    RECORDING_HEIGHT / sourceHeight,
+  );
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  const offsetX = (RECORDING_WIDTH - drawWidth) / 2;
+  const offsetY = (RECORDING_HEIGHT - drawHeight) / 2;
+
+  context.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
 }
 
 export interface CameraViewHandle {
@@ -48,6 +78,50 @@ const CameraView = forwardRef<CameraViewHandle, Props>(
     const recorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
     const recordingMimeTypeRef = useRef("video/webm");
+    const recordingCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const recordingStreamRef = useRef<MediaStream | null>(null);
+    const animationFrameRef = useRef<number | null>(null);
+
+    const stopNormalizedRecordingStream = useCallback(() => {
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+    }, []);
+
+    const createNormalizedRecordingStream = useCallback(() => {
+      const video = videoRef.current;
+      if (!streamRef.current || !video) {
+        return streamRef.current;
+      }
+
+      const canvas =
+        recordingCanvasRef.current ?? document.createElement("canvas");
+      recordingCanvasRef.current = canvas;
+      canvas.width = RECORDING_WIDTH;
+      canvas.height = RECORDING_HEIGHT;
+
+      const context = canvas.getContext("2d");
+      if (!context || typeof canvas.captureStream !== "function") {
+        return streamRef.current;
+      }
+
+      stopNormalizedRecordingStream();
+      context.imageSmoothingEnabled = true;
+
+      const renderFrame = () => {
+        drawContainedVideoFrame(context, video);
+        animationFrameRef.current = window.requestAnimationFrame(renderFrame);
+      };
+
+      renderFrame();
+      const normalizedStream = canvas.captureStream(RECORDING_FRAME_RATE);
+      recordingStreamRef.current = normalizedStream;
+      return normalizedStream;
+    }, [stopNormalizedRecordingStream]);
 
     useEffect(() => {
       let mounted = true;
@@ -91,52 +165,77 @@ const CameraView = forwardRef<CameraViewHandle, Props>(
 
       return () => {
         mounted = false;
+        stopNormalizedRecordingStream();
         streamRef.current?.getTracks().forEach((t) => t.stop());
       };
-    }, [onReady, onError]);
+    }, [onReady, onError, stopNormalizedRecordingStream]);
 
-    useImperativeHandle(ref, () => ({
-      startRecording() {
-        if (!streamRef.current) return;
-        if (!window.MediaRecorder) {
-          onError(
-            "L'enregistrement vidéo n'est pas disponible sur ce navigateur.",
-          );
-          return;
-        }
-        chunksRef.current = [];
-        const mimeType = getSupportedRecordingMimeType();
-        const recorder = new MediaRecorder(
-          streamRef.current,
-          mimeType ? { mimeType } : undefined,
-        );
-        recordingMimeTypeRef.current =
-          recorder.mimeType || mimeType || "video/webm";
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunksRef.current.push(e.data);
-        };
-        recorder.start(300);
-        recorderRef.current = recorder;
-      },
-
-      stopRecording(): Promise<Blob> {
-        return new Promise((resolve) => {
-          const recorder = recorderRef.current;
-          if (!recorder) {
-            resolve(new Blob([]));
+    useImperativeHandle(
+      ref,
+      () => ({
+        startRecording() {
+          if (!streamRef.current) return;
+          if (!window.MediaRecorder) {
+            onError(
+              "L'enregistrement vidéo n'est pas disponible sur ce navigateur.",
+            );
             return;
           }
-          recorder.onstop = () => {
-            resolve(
-              new Blob(chunksRef.current, {
-                type: recordingMimeTypeRef.current,
-              }),
+
+          chunksRef.current = [];
+          const mimeType = getSupportedRecordingMimeType();
+          const recordingStream = createNormalizedRecordingStream();
+          if (!recordingStream) {
+            return;
+          }
+
+          try {
+            const recorder = new MediaRecorder(
+              recordingStream,
+              mimeType ? { mimeType } : undefined,
             );
-          };
-          recorder.stop();
-        });
-      },
-    }));
+            recordingMimeTypeRef.current =
+              recorder.mimeType || mimeType || "video/webm";
+            recorder.ondataavailable = (e) => {
+              if (e.data.size > 0) chunksRef.current.push(e.data);
+            };
+            recorder.start(300);
+            recorderRef.current = recorder;
+          } catch {
+            stopNormalizedRecordingStream();
+            onError(
+              "L'enregistrement vidéo n'est pas disponible sur ce navigateur.",
+            );
+          }
+        },
+
+        stopRecording(): Promise<Blob> {
+          return new Promise((resolve) => {
+            const recorder = recorderRef.current;
+            if (!recorder) {
+              stopNormalizedRecordingStream();
+              resolve(new Blob([]));
+              return;
+            }
+            recorder.onstop = () => {
+              stopNormalizedRecordingStream();
+              recorderRef.current = null;
+              resolve(
+                new Blob(chunksRef.current, {
+                  type: recordingMimeTypeRef.current,
+                }),
+              );
+            };
+            recorder.stop();
+          });
+        },
+      }),
+      [
+        createNormalizedRecordingStream,
+        onError,
+        stopNormalizedRecordingStream,
+      ],
+    );
 
     return (
       <div className="camera-wrapper">

@@ -8,6 +8,13 @@ from pathlib import Path
 
 
 DEFAULT_CONVERSION_TIMEOUT_SECONDS = 120
+STANDARD_VIDEO_WIDTH = 640
+STANDARD_VIDEO_HEIGHT = 480
+STANDARD_VIDEO_FRAME_RATE = 30
+VIDEO_INPUT_SUFFIXES = {
+    "video/webm": ".webm",
+    "video/mp4": ".mp4",
+}
 
 
 class VideoConversionError(RuntimeError):
@@ -53,12 +60,19 @@ def _conversion_timeout_seconds() -> int:
         return DEFAULT_CONVERSION_TIMEOUT_SECONDS
 
 
-def _webm_to_mp4(video_bytes: bytes) -> bytes:
+def _convert_to_standard_mp4(video_bytes: bytes, input_suffix: str) -> bytes:
     with tempfile.TemporaryDirectory(prefix="lsf-video-convert-") as temp_dir:
-        input_path = Path(temp_dir) / "input.webm"
+        input_path = Path(temp_dir) / f"input{input_suffix}"
         output_path = Path(temp_dir) / "output.mp4"
         input_path.write_bytes(video_bytes)
 
+        video_filter = (
+            f"scale={STANDARD_VIDEO_WIDTH}:{STANDARD_VIDEO_HEIGHT}:"
+            "force_original_aspect_ratio=decrease,"
+            f"pad={STANDARD_VIDEO_WIDTH}:{STANDARD_VIDEO_HEIGHT}:"
+            "(ow-iw)/2:(oh-ih)/2:black,"
+            "setsar=1"
+        )
         command = [
             _get_ffmpeg_executable(),
             "-nostdin",
@@ -69,6 +83,10 @@ def _webm_to_mp4(video_bytes: bytes) -> bytes:
             "-i",
             str(input_path),
             "-an",
+            "-vf",
+            video_filter,
+            "-r",
+            str(STANDARD_VIDEO_FRAME_RATE),
             "-c:v",
             "libx264",
             "-preset",
@@ -96,12 +114,15 @@ def _webm_to_mp4(video_bytes: bytes) -> bytes:
         return output_path.read_bytes()
 
 
+def _webm_to_mp4(video_bytes: bytes) -> bytes:
+    return _convert_to_standard_mp4(video_bytes, ".webm")
+
+
 def _video_bytes_as_mp4(video_bytes: bytes, content_type: str | None) -> bytes:
     media_type = (content_type or "").split(";")[0].strip().lower()
-    if media_type == "video/mp4":
-        return video_bytes
-    if media_type == "video/webm":
-        return _webm_to_mp4(video_bytes)
+    input_suffix = VIDEO_INPUT_SUFFIXES.get(media_type)
+    if input_suffix:
+        return _convert_to_standard_mp4(video_bytes, input_suffix)
     raise VideoConversionError("Format vidéo non convertible")
 
 
