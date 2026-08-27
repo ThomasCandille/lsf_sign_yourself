@@ -44,6 +44,10 @@ export default function App() {
     }
   }
 
+  function handleChangeWord() {
+    setWordIndex((i) => (words.length > 0 ? (i + 1) % words.length : 0));
+  }
+
   if (step === "declined") {
     return (
       <div className="app-loading app-message">
@@ -93,6 +97,7 @@ export default function App() {
           totalSigned={totalSigned}
           onSigned={handleSigned}
           onNext={handleNext}
+          onChangeWord={handleChangeWord}
         />
       )}
     </>

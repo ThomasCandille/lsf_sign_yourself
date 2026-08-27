@@ -289,7 +289,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   text-align: center;
+}
+
+.ready-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.ready-actions .btn-large {
+  min-width: 180px;
 }
 
 .btn-large {
@@ -442,6 +457,10 @@
     width: min(100%, 260px);
     font-size: 1rem;
     padding: 0.75rem 1.5rem;
+  }
+
+  .ready-actions {
+    align-items: stretch;
   }
 
   .review-actions {

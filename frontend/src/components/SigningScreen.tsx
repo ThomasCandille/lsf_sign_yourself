@@ -20,6 +20,7 @@ interface Props {
   totalSigned: number;
   onSigned: (newCount: number) => void;
   onNext: () => void | Promise<void>;
+  onChangeWord: () => void;
 }
 
 const COUNTDOWN_SEC = 3;
@@ -36,6 +37,7 @@ export default function SigningScreen({
   totalSigned,
   onSigned,
   onNext,
+  onChangeWord,
 }: Props) {
   const cameraRef = useRef<CameraViewHandle>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -288,12 +290,20 @@ export default function SigningScreen({
 
           <div className="signing-actions">
             {phase === "ready" && (
-              <button
-                className="btn btn-primary btn-large"
-                onClick={startCountdown}
-              >
-                Démarrer
-              </button>
+              <div className="ready-actions">
+                <button
+                  className="btn btn-primary btn-large"
+                  onClick={startCountdown}
+                >
+                  Démarrer
+                </button>
+                <button
+                  className="btn btn-secondary btn-large"
+                  onClick={onChangeWord}
+                >
+                  Changer de mot
+                </button>
+              </div>
             )}
             {phase === "countdown" && (
               <button className="btn btn-secondary" onClick={discardRecording}>

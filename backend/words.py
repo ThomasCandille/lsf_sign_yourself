@@ -28,7 +28,7 @@ WORDS = [
     {"id": "personne", "label": "Personne", "video_url": f"{ELIX_VIDEO_BASE}/personne_nf_1_1.mp4"},
     {"id": "homme", "label": "Homme", "video_url": f"{LSF_DICO_VIDEO_BASE}/homme.mp4"},
     {"id": "femme", "label": "Femme", "video_url": f"{LSF_DICO_VIDEO_BASE}/femme.mp4"},
-    {"id": "enfant", "label": "Enfant", "video_url": f"{ELIX_VIDEO_BASE}/&.mp4"},
+    {"id": "enfant", "label": "Enfant", "video_url": f"{ELIX_VIDEO_BASE}/enfant_n_2_1.mp4"},
     {"id": "etre", "label": "Être", "video_url": f"{ELIX_VIDEO_BASE}/etre_nm_1_1.mp4"},
     {"id": "s-appeler", "label": "S'appeler", "video_url": f"{ELIX_VIDEO_BASE}/00344-4.mp4"},
     {"id": "habiter", "label": "Habiter", "video_url": f"{LSF_DICO_VIDEO_BASE}/habiter.mp4"},
