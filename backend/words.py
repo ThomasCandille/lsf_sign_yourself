@@ -7,7 +7,7 @@ WORDS = [
     {"id": "au-revoir", "label": "Au revoir", "video_url": f"{LSF_DICO_VIDEO_BASE}/au_revoir.mp4"},
     {"id": "merci", "label": "Merci", "video_url": f"{LSF_DICO_VIDEO_BASE}/merci.mp4"},
     {"id": "s-il-te-plait", "label": "S'il te plaît", "video_url": f"{ELIX_VIDEO_BASE}/02252.mp4"},
-    {"id": "pardon", "label": "Pardon", "video_url": f"{LSF_DICO_VIDEO_BASE}/pardon.mp4"},
+    {"id": "pardon", "label": "Pardon", "video_url": f"{ELIX_VIDEO_BASE}/pardon_nm_3_1.mp4"},
     {"id": "oui", "label": "Oui", "video_url": f"{ELIX_VIDEO_BASE}/oui_adv_1_1.mp4"},
     {"id": "non", "label": "Non", "video_url": f"{ELIX_VIDEO_BASE}/non_adv_1_1.mp4"},
     {"id": "encore", "label": "Encore", "video_url": f"{ELIX_VIDEO_BASE}/encore_adv_2_1.mp4"},
