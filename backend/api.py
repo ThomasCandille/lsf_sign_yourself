@@ -6,22 +6,22 @@ import unicodedata
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+
+import drive as drive_service
+from database import Score, Submission, get_db, init_db
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from profanity import is_vulgar
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from dotenv import load_dotenv
+from words import WORDS, WORDS_BY_ID
 
 load_dotenv()
-
-from database import init_db, get_db, Score, Submission
-from words import WORDS, WORDS_BY_ID
-from profanity import is_vulgar
-import drive as drive_service
 
 
 MAX_VIDEO_BYTES = int(os.getenv("MAX_VIDEO_BYTES", str(25 * 1024 * 1024)))

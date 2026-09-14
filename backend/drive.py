@@ -1,11 +1,10 @@
 import os
-import tempfile
 import re
 import subprocess
+import tempfile
 import uuid
 import zipfile
 from pathlib import Path
-
 
 DEFAULT_CONVERSION_TIMEOUT_SECONDS = 120
 STANDARD_VIDEO_WIDTH = 640
@@ -154,11 +153,11 @@ def upload_video(
     storage_path = get_video_storage_path()
     mp4_bytes = _video_bytes_as_mp4(video_bytes, content_type)
 
-    filename = (
-        f"{_safe_part(word_id)}__{_safe_part(pseudo)}__"
-        f"{uuid.uuid4().hex}.mp4"
-    )
-    filepath = os.path.join(storage_path, filename)
+    word_directory = os.path.join(storage_path, _safe_part(word_id))
+    os.makedirs(word_directory, exist_ok=True)
+
+    filename = f"{_safe_part(pseudo)}__{uuid.uuid4().hex}.mp4"
+    filepath = os.path.join(word_directory, filename)
     with open(filepath, "wb") as f:
         f.write(mp4_bytes)
     return filepath
