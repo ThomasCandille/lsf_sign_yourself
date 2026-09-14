@@ -11,7 +11,6 @@ STANDARD_VIDEO_WIDTH = 640
 STANDARD_VIDEO_HEIGHT = 480
 STANDARD_VIDEO_FRAME_RATE = 30
 VIDEO_INPUT_SUFFIXES = {
-    "video/webm": ".webm",
     "video/mp4": ".mp4",
 }
 

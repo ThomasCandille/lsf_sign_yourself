@@ -15,8 +15,6 @@ const RECORDING_MIME_TYPES = [
   "video/mp4;codecs=avc1.42E01E",
   "video/mp4;codecs=h264",
   "video/mp4",
-  "video/webm;codecs=vp8",
-  "video/webm",
 ];
 
 const CAMERA_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
@@ -78,7 +76,7 @@ const CameraView = forwardRef<CameraViewHandle, Props>(
     const streamRef = useRef<MediaStream | null>(null);
     const recorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
-    const recordingMimeTypeRef = useRef("video/webm");
+    const recordingMimeTypeRef = useRef("video/mp4");
     const recordingCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const recordingStreamRef = useRef<MediaStream | null>(null);
     const animationFrameRef = useRef<number | null>(null);
@@ -185,6 +183,13 @@ const CameraView = forwardRef<CameraViewHandle, Props>(
 
           chunksRef.current = [];
           const mimeType = getSupportedRecordingMimeType();
+          if (!mimeType) {
+            onError(
+              "L'enregistrement MP4 n'est pas disponible sur ce navigateur.",
+            );
+            return;
+          }
+
           const recordingStream = createNormalizedRecordingStream();
           if (!recordingStream) {
             return;
@@ -193,10 +198,9 @@ const CameraView = forwardRef<CameraViewHandle, Props>(
           try {
             const recorder = new MediaRecorder(
               recordingStream,
-              mimeType ? { mimeType } : undefined,
+              { mimeType },
             );
-            recordingMimeTypeRef.current =
-              recorder.mimeType || mimeType || "video/webm";
+            recordingMimeTypeRef.current = recorder.mimeType || mimeType;
             recorder.ondataavailable = (e) => {
               if (e.data.size > 0) chunksRef.current.push(e.data);
             };
