@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosRequestConfig } from "axios";
 import { Word, LeaderboardEntry } from "./types";
 
 const BASE = process.env.REACT_APP_API_BASE_URL ?? "http://localhost:8000";
@@ -51,4 +51,13 @@ export async function uploadSign(
 export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
   const { data } = await apiClient.get<LeaderboardEntry[]>("/leaderboard");
   return data;
+}
+
+// Keep the admin token in component memory and send it only in the request header.
+export function adminRequest<T = unknown>(token: string, path: string, config: AxiosRequestConfig = {}) {
+  return apiClient.request<T>({
+    ...config,
+    url: path,
+    headers: { ...config.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
 }

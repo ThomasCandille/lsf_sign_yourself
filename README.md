@@ -26,28 +26,33 @@ Depuis `backend/`, cela crée donc `backend/videos`. Ce dossier est ignoré par 
 
 La conversion utilise FFmpeg via la dépendance Python `imageio-ffmpeg`.
 
-Pour récupérer les vidéos depuis l'API, définissez un token admin :
+## Administration et classement
+
+Définissez les deux codes dans `backend/.env` (ou dans les variables du service backend en production) :
 
 ```bash
-ADMIN_DOWNLOAD_TOKEN=un-token-long-et-secret
+ADMIN_USERNAME=votre-identifiant
+ADMIN_PASSWORD=votre-mot-de-passe-long-et-secret
 ```
 
-Puis téléchargez toutes les vidéos en zip :
+Redémarrez le backend puis ouvrez `/admin` sur le site frontend. Les codes sont vérifiés uniquement côté backend ; aucune variable `REACT_APP_` ne doit les contenir. Utilisez HTTPS en production.
 
-```bash
-curl -L \
-  -H "Authorization: Bearer $ADMIN_DOWNLOAD_TOKEN" \
-  http://localhost:8000/admin/videos.zip \
-  -o lsf-videos.zip
+L'administrateur peut lire les vidéos, choisir **Bon** ou **Pas bon**, et corriger un classement, y compris remettre une vidéo en attente. Les trois dossiers sont créés sous `VIDEO_STORAGE_PATH` :
+
+```text
+videos/
+  en_attente/
+  bon/
+  pas_bon/
 ```
 
-Pour vérifier le dossier utilisé et le nombre de vidéos :
+Les nouvelles vidéos arrivent dans `en_attente/`. Au démarrage, les anciennes vidéos MP4/WebM à la racine (ou dans les anciens sous-dossiers) sont déplacées dans `en_attente/`, avec mise à jour de leurs chemins en base. Un conflit de noms arrête la migration sans écraser le fichier existant. Sauvegardez le stockage et la base avant le premier déploiement.
 
-```bash
-curl \
-  -H "Authorization: Bearer $ADMIN_DOWNLOAD_TOKEN" \
-  http://localhost:8000/admin/storage
-```
+Le bouton **Télécharger les 3 dossiers (ZIP)** conserve cette arborescence et inclut les dossiers vides. Les fichiers sont déplacés physiquement dans le volume persistant : une récupération directe du volume conserve également leur classement.
+
+Les sessions admin durent 8 heures et sont conservées en base ; la déconnexion les révoque. Le navigateur garde le jeton uniquement en mémoire : recharger la page demande une nouvelle connexion. Les vidéos et le ZIP nécessitent une session valide. Cinq échecs de connexion par adresse IP entraînent une attente de 5 minutes (compteur en mémoire par processus). L'ancien `ADMIN_DOWNLOAD_TOKEN` est remplacé par la connexion admin.
+
+Pour un accès API, envoyez `POST /admin/login` avec un JSON `{"username":"…","password":"…"}`, puis le jeton reçu dans l'en-tête `Authorization: Bearer <token>` aux routes `/admin/videos`, `/admin/storage` ou `/admin/videos.zip`. `POST /admin/logout` révoque ce jeton.
 
 ## Déploiement Render
 
@@ -63,7 +68,8 @@ Configuration recommandée :
 ```bash
 VIDEO_STORAGE_PATH=/var/data/videos
 DATABASE_URL=sqlite+aiosqlite:////var/data/lsf.db
-ADMIN_DOWNLOAD_TOKEN=un-token-long-et-secret
+ADMIN_USERNAME=votre-identifiant
+ADMIN_PASSWORD=votre-mot-de-passe-long-et-secret
 ALLOWED_HOSTS=nom-du-backend.onrender.com
 ALLOWED_ORIGINS=https://url-du-frontend.onrender.com
 ```
@@ -80,11 +86,4 @@ cd backend && uvicorn api:app --host 0.0.0.0 --port $PORT
 REACT_APP_API_BASE_URL=https://url-du-backend.onrender.com
 ```
 
-Ensuite, pour récupérer les vidéos depuis Render :
-
-```bash
-curl -L \
-  -H "Authorization: Bearer $ADMIN_DOWNLOAD_TOKEN" \
-  https://url-du-backend.onrender.com/admin/videos.zip \
-  -o lsf-videos.zip
-```
+Ensuite, ouvrez `/admin` sur le frontend pour classer les vidéos et télécharger les trois dossiers dans une archive ZIP. Configurez l'hébergement frontend pour servir `index.html` sur `/admin` (réécriture SPA).
