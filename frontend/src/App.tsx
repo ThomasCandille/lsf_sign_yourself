@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import AdminPage from "./components/AdminPage";
 import ConsentModal from "./components/ConsentModal";
 import PseudoModal from "./components/PseudoModal";
 import SigningScreen from "./components/SigningScreen";
@@ -7,6 +8,10 @@ import { Word } from "./types";
 import "./App.css";
 
 export default function App() {
+  return /^\/admin\/?$/.test(window.location.pathname) ? <AdminPage /> : <PublicApp />;
+}
+
+function PublicApp() {
   const [step, setStep] = useState<
     "consent" | "declined" | "pseudo" | "signing"
   >("consent");

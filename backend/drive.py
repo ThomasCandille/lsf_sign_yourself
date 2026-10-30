@@ -5,7 +5,12 @@ import subprocess
 import uuid
 import zipfile
 from pathlib import Path
+from threading import RLock
 
+
+VIDEO_STATUSES = ("en_attente", "bon", "pas_bon")
+VIDEO_SUFFIXES = {".mp4", ".webm"}
+storage_lock = RLock()
 
 DEFAULT_CONVERSION_TIMEOUT_SECONDS = 120
 STANDARD_VIDEO_WIDTH = 640
@@ -139,7 +144,7 @@ def _unique_archive_name(archive_name: str, used_names: set[str]) -> str:
         candidate = str(path.with_name(f"{path.stem}-{index}{path.suffix}"))
         if candidate not in used_names:
             used_names.add(candidate)
-            return candidate
+            return candidate.resolve()
 
     raise RuntimeError("Impossible de créer un nom de fichier unique")
 
@@ -151,7 +156,8 @@ def upload_video(
     content_type: str | None,
 ) -> str:
     """Save the submitted video as MP4 for human validation. Returns the file path."""
-    storage_path = get_video_storage_path()
+    storage_path = str(Path(get_video_storage_path()) / "en_attente")
+    Path(storage_path).mkdir(parents=True, exist_ok=True)
     mp4_bytes = _video_bytes_as_mp4(video_bytes, content_type)
 
     filename = (
@@ -159,8 +165,9 @@ def upload_video(
         f"{uuid.uuid4().hex}.mp4"
     )
     filepath = os.path.join(storage_path, filename)
-    with open(filepath, "wb") as f:
-        f.write(mp4_bytes)
+    with storage_lock:
+        with open(filepath, "wb") as f:
+            f.write(mp4_bytes)
     return filepath
 
 
@@ -169,7 +176,7 @@ def list_video_files() -> list[Path]:
     video_files: list[Path] = []
 
     for path in storage_root.rglob("*"):
-        if path.is_symlink() or not path.is_file():
+        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in VIDEO_SUFFIXES:
             continue
         resolved_path = path.resolve()
         if storage_root not in resolved_path.parents:
@@ -179,16 +186,69 @@ def list_video_files() -> list[Path]:
     return sorted(video_files)
 
 
+def prepare_video_storage() -> list[tuple[str, str]]:
+    """Move legacy videos into the pending folder; never overwrite a file."""
+    root = Path(get_video_storage_path())
+    changes = []
+    with storage_lock:
+        for status in VIDEO_STATUSES:
+            folder = root / status
+            if folder.is_symlink():
+                raise RuntimeError("Un dossier de classement ne peut pas être un lien symbolique")
+            folder.mkdir(exist_ok=True)
+        for source in list_video_files():
+            relative = source.relative_to(root.resolve())
+            if relative.parts[0] in VIDEO_STATUSES:
+                continue
+            target = root / "en_attente" / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                raise RuntimeError(f"Conflit de migration : {relative}")
+            source.rename(target)
+            changes.append((str(source), str(target)))
+    return changes
+
+
+def get_admin_video(path: str) -> Path:
+    root = Path(get_video_storage_path()).resolve()
+    relative = Path(path)
+    if relative.is_absolute() or len(relative.parts) < 2 or relative.parts[0] not in VIDEO_STATUSES:
+        raise ValueError("Chemin vidéo invalide")
+    candidate = root / relative
+    if candidate.is_symlink() or not candidate.is_file() or candidate.suffix.lower() not in VIDEO_SUFFIXES:
+        raise FileNotFoundError("Vidéo introuvable")
+    if not candidate.resolve().is_relative_to(root / relative.parts[0]):
+        raise ValueError("Chemin vidéo invalide")
+    return candidate.resolve()
+
+
+def list_admin_videos() -> list[dict]:
+    with storage_lock:
+        root = Path(get_video_storage_path()).resolve()
+        return [
+            {"path": str(path.relative_to(root)), "name": path.name,
+             "status": path.relative_to(root).parts[0], "size": path.stat().st_size}
+            for path in list_video_files()
+            if path.relative_to(root).parts[0] in VIDEO_STATUSES
+        ]
+
+
 def get_video_storage_stats() -> dict[str, int | str]:
-    video_files = list_video_files()
-    return {
-        "storage_path": str(Path(get_video_storage_path()).resolve()),
-        "video_count": len(video_files),
-        "total_bytes": sum(path.stat().st_size for path in video_files),
-    }
+    with storage_lock:
+        video_files = list_video_files()
+        return {
+            "storage_path": str(Path(get_video_storage_path()).resolve()),
+            "video_count": len(video_files),
+            "total_bytes": sum(path.stat().st_size for path in video_files),
+        }
 
 
 def create_videos_archive() -> tuple[str, int]:
+    with storage_lock:
+        return _create_videos_archive()
+
+
+def _create_videos_archive() -> tuple[str, int]:
     storage_root = Path(get_video_storage_path()).resolve()
     video_files = list_video_files()
     used_names: set[str] = set()
@@ -200,25 +260,31 @@ def create_videos_archive() -> tuple[str, int]:
     archive_path = archive.name
     archive.close()
 
-    with zipfile.ZipFile(
-        archive_path,
-        "w",
-        compression=zipfile.ZIP_DEFLATED,
-    ) as archive_file:
-        for video_path in video_files:
-            relative_path = video_path.resolve().relative_to(storage_root)
-            if video_path.suffix.lower() == ".webm":
-                archive_file.writestr(
-                    _unique_archive_name(
-                        _archive_name_for_mp4(relative_path),
-                        used_names,
-                    ),
-                    _webm_to_mp4(video_path.read_bytes()),
-                )
-            else:
-                archive_file.write(
-                    video_path,
-                    arcname=_unique_archive_name(str(relative_path), used_names),
-                )
+    try:
+        with zipfile.ZipFile(
+            archive_path,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+        ) as archive_file:
+            for status in VIDEO_STATUSES:
+                archive_file.writestr(f"{status}/", b"")
+            for video_path in video_files:
+                relative_path = video_path.resolve().relative_to(storage_root)
+                if video_path.suffix.lower() == ".webm":
+                    archive_file.writestr(
+                        _unique_archive_name(
+                            _archive_name_for_mp4(relative_path),
+                            used_names,
+                        ),
+                        _webm_to_mp4(video_path.read_bytes()),
+                    )
+                else:
+                    archive_file.write(
+                        video_path,
+                        arcname=_unique_archive_name(str(relative_path), used_names),
+                    )
+    except Exception:
+        os.unlink(archive_path)
+        raise
 
     return archive_path, len(video_files)
