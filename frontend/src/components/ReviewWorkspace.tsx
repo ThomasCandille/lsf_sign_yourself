@@ -17,36 +17,9 @@ function errorMessage(error: unknown): string {
   return "Impossible de terminer cette opération. Réessayez.";
 }
 
-function Shrimp({ className = "" }: { className?: string }) {
-  return <svg className={`shrimp-mascot ${className}`} viewBox="0 0 360 300" fill="none" aria-hidden="true" strokeLinecap="round" strokeLinejoin="round">
-    <ellipse cx="180" cy="266" rx="103" ry="13" fill="#eaa396" opacity=".22" />
-    <g className="shrimp-body">
-      <path d="M111 85C81 53 45 58 39 30M129 78C111 30 81 16 59 21" stroke="#c85c59" strokeWidth="4" />
-      <path d="M131 88C173 62 228 77 248 115C273 163 257 217 218 238C185 256 141 247 124 218C113 200 122 181 140 179C158 176 163 195 182 192C203 189 213 164 200 148C188 132 167 139 147 145C119 153 92 132 98 111C101 100 114 92 131 88Z" fill="#ffab96" stroke="#b94f50" strokeWidth="4" />
-      <path d="M194 84Q177 105 180 134M224 99Q207 120 207 149M245 128Q225 140 216 160M250 161L220 174M242 197L216 188M219 226L202 201M186 241L184 211M150 235L160 207" stroke="#db7669" strokeWidth="4" />
-      <path d="M143 211C119 219 99 206 88 218C79 230 93 242 115 238C97 250 107 267 121 263C141 258 147 236 143 211Z" fill="#f48083" stroke="#b94f50" strokeWidth="4" />
-      <path d="M138 221L112 232M139 225L122 249" stroke="#b94f50" strokeWidth="3" />
-      <path d="M157 145L139 158L153 163M178 145L163 160L178 166M202 164L187 176L198 183" stroke="#b94f50" strokeWidth="3" />
-      <ellipse cx="121" cy="109" rx="7" ry="10" fill="#663d43" />
-      <ellipse cx="151" cy="101" rx="7" ry="10" fill="#663d43" />
-      <circle cx="123" cy="106" r="2.4" fill="white" />
-      <circle cx="153" cy="98" r="2.4" fill="white" />
-      <ellipse cx="112" cy="126" rx="10" ry="6" fill="#ed7b82" opacity=".75" />
-      <ellipse cx="163" cy="118" rx="10" ry="6" fill="#ed7b82" opacity=".75" />
-      <path d="M131 122Q139 133 148 119" stroke="#91464c" strokeWidth="3" />
-      <path d="M174 91Q186 88 196 95" stroke="#ffd7bd" strokeWidth="6" />
-    </g>
-    <path className="shrimp-heart" d="M279 74C268 61 251 72 258 84L279 103L299 82C307 68 288 61 279 74Z" fill="#ec8798" />
-    <path d="M70 165V181M62 173H78M294 183V195M288 189H300" stroke="#d5a760" strokeWidth="3" />
-    <circle cx="300" cy="132" r="8" stroke="#9fc7c2" strokeWidth="3" />
-    <circle cx="69" cy="216" r="5" stroke="#9fc7c2" strokeWidth="2" />
-    <circle cx="88" cy="72" r="3" fill="#d5a760" />
-  </svg>;
-}
-
 function ReferenceVideo({ word }: { word: ReferenceWord | null }) {
   const [failed, setFailed] = useState(false);
-  return <div className="admin-video-panel">
+  return <div className="admin-video-panel is-reference">
     <h3>Vidéo de référence{word ? ` : ${word.label}` : ""}</h3>
     {word ? <>
       {!failed && <video src={word.video_url} controls loop autoPlay muted playsInline preload="metadata"
@@ -163,19 +136,14 @@ export default function ReviewWorkspace() {
     finally { setBusy(false); }
   }
 
-  return <main className={`admin-page${token ? " is-connected" : ""}`}><div className="admin-shell">
+  return <main className="admin-page"><div className="admin-shell">
     <header className="admin-header">
-      <div className="shrimp-brand"><Shrimp className="shrimp-logo" /><div><h1>La petite crevetterie</h1><span>Workspace · Validation des vidéos LSF</span></div></div>
-      <a href="/">Retour au site <span aria-hidden="true">↗</span></a>
+      <h1>Administration des vidéos</h1>
+      <a href="/">Retour au site</a>
     </header>
-    <section className="shrimp-welcome" aria-labelledby="shrimp-title">
-      <div className="shrimp-welcome-copy"><span className="shrimp-eyebrow">Le repaire des crevettes</span><h2 id="shrimp-title">Petites crevettes,<br /><em>grands gestes.</em></h2><p>Un œil attentif, deux petites antennes.<br />Chaque geste mérite sa place.</p></div>
-      <div className="shrimp-portrait"><span className="shrimp-portrait-label">Votre collègue à antennes</span><Shrimp /><span className="shrimp-hello">Coucou ! ♡</span></div>
-    </section>
     {error && <p role="alert" className="admin-error">{error}</p>}
     {!token ? <form className="admin-login" onSubmit={login}>
-      <span className="shrimp-eyebrow">Entrée de la crevetterie</span>
-      <h2>Bienvenue à bord !</h2>
+      <h2>Connexion</h2>
       <label htmlFor="admin-username">Identifiant</label>
       <input id="admin-username" autoComplete="username" required maxLength={256} value={username} onChange={(e) => setUsername(e.target.value)} />
       <label htmlFor="admin-password">Mot de passe</label>
@@ -189,7 +157,7 @@ export default function ReviewWorkspace() {
       </div>
       <nav className="admin-actions admin-folders" aria-label="Dossiers de vidéos">
         {statuses.map((folder) => <button key={folder} className={`btn ${status === folder ? "btn-primary" : "btn-secondary"}`} aria-pressed={status === folder} disabled={busy} onClick={() => { setStatus(folder); setSelected(""); setError(""); }}>
-          <span className="admin-folder-label"><span className="shrimp-folder-icon" aria-hidden="true">{folder === "en_attente" ? "◷" : folder === "bon" ? "♡" : "↺"}</span>{labels[folder]}</span><span className="admin-folder-count">{videos.filter((video) => video.status === folder).length}</span>
+          <span>{labels[folder]}</span><span className="admin-folder-count">{videos.filter((video) => video.status === folder).length}</span>
         </button>)}
       </nav>
       {current ? <section className="admin-review">
@@ -209,8 +177,7 @@ export default function ReviewWorkspace() {
             {folder === "en_attente" ? "Remettre en attente" : `Classer : ${labels[folder]}`}
           </button>)}
         </div>
-      </section> : <div className="shrimp-empty"><Shrimp /><h3>Petite pause pour les antennes.</h3><p>Aucune vidéo dans ce dossier.</p></div>}
+      </section> : <p>Aucune vidéo dans ce dossier.</p>}
     </>}
-    <footer className="shrimp-footer"><span>La petite crevetterie</span><span>Des gestes, du soin et beaucoup de crevettes ♡</span></footer>
   </div></main>;
 }
