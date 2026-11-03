@@ -160,10 +160,10 @@ def upload_video(
     Path(storage_path).mkdir(parents=True, exist_ok=True)
     mp4_bytes = _video_bytes_as_mp4(video_bytes, content_type)
 
-    filename = (
-        f"{_safe_part(word_id)}__{_safe_part(pseudo)}__"
-        f"{uuid.uuid4().hex}.mp4"
-    )
+    # Keep the word in the directory, and the contributor only in the database.
+    storage_path = str(Path(storage_path) / _safe_part(word_id))
+    Path(storage_path).mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.mp4"
     filepath = os.path.join(storage_path, filename)
     with storage_lock:
         with open(filepath, "wb") as f:
@@ -207,6 +207,46 @@ def prepare_video_storage() -> list[tuple[str, str]]:
             source.rename(target)
             changes.append((str(source), str(target)))
     return changes
+
+
+def opaque_video_name(filename: str) -> str:
+    path = Path(filename)
+    if re.fullmatch(r"[a-f0-9]{32}", path.stem):
+        return filename
+    # Reuse the existing random UUID when available. A stable fallback lets us
+    # repair the DB even after a restart between renaming and committing.
+    suffix = path.stem.rsplit("__", 1)[-1]
+    identifier = suffix if re.fullmatch(r"[a-f0-9]{32}", suffix) else uuid.uuid5(
+        uuid.NAMESPACE_URL, f"lsf-video:{filename}"
+    ).hex
+    return f"{identifier}{path.suffix.lower()}"
+
+
+def video_word_id(source: Path) -> str | None:
+    root = Path(get_video_storage_path()).resolve()
+    relative = source.resolve().relative_to(root)
+    # A word directory also preserves reference metadata for orphan recordings.
+    if "__" in source.stem:
+        candidate = source.stem.split("__", 1)[0]
+    elif len(relative.parts) >= 3 and relative.parts[0] in VIDEO_STATUSES:
+        candidate = relative.parts[1]
+    else:
+        return None
+    return candidate if re.fullmatch(r"[a-z0-9-]{1,64}", candidate) else None
+
+
+def get_classified_video_path(source: Path, status: str, word_id: str | None = None) -> Path:
+    """Every status contains word directories and opaque filenames."""
+    if status not in VIDEO_STATUSES:
+        raise ValueError("Classement invalide")
+    root = Path(get_video_storage_path()).resolve()
+    word = word_id if word_id is not None else video_word_id(source) or "inconnu"
+    if not re.fullmatch(r"[a-z0-9-]{1,64}", word):
+        raise ValueError("Mot invalide")
+    target = root / status / word / opaque_video_name(source.name)
+    if not target.resolve().is_relative_to(root / status):
+        raise ValueError("Dossier de destination invalide")
+    return target
 
 
 def get_admin_video(path: str) -> Path:

@@ -57,20 +57,59 @@ def _csv_env(name: str, default: str) -> list[str]:
 async def lifespan(app: FastAPI):
     await init_db()
     drive_service.prepare_video_storage()
-    # Also repair paths after a restart between a file move and the DB commit.
-    root = Path(drive_service.get_video_storage_path()).resolve()
     async with AsyncSessionLocal() as db:
-        for submission in (await db.execute(select(Submission))).scalars():
-            old = Path(submission.video_path).resolve()
-            if old.is_relative_to(root):
-                relative = old.relative_to(root)
-                remainder = Path(*relative.parts[1:]) if relative.parts[0] in drive_service.VIDEO_STATUSES else relative
-                candidates = [root / status / remainder for status in drive_service.VIDEO_STATUSES]
-                matches = [path for path in candidates if path.is_file()]
-                if len(matches) == 1:
-                    submission.video_path = str(matches[0])
-        await db.commit()
+        await organize_video_storage(db)
     yield
+
+
+async def organize_video_storage(db: AsyncSession) -> None:
+    """Migrate sorted files and repair DB paths, including interrupted old moves."""
+    root = Path(drive_service.get_video_storage_path()).resolve()
+    files = await asyncio.to_thread(drive_service.list_video_files)
+    files_by_name = defaultdict(list)
+    for path in files:
+        files_by_name[path.name].append(path)
+    rows_by_path = defaultdict(list)
+    for row in (await db.execute(select(Submission))).scalars():
+        old = Path(row.video_path).resolve()
+        if not old.is_relative_to(root):
+            continue
+        matches = files_by_name.get(old.name, []) or files_by_name.get(
+            drive_service.opaque_video_name(old.name), []
+        )
+        status = old.relative_to(root).parts[0]
+        expected = drive_service.get_classified_video_path(
+            old, status if status in drive_service.VIDEO_STATUSES else "en_attente", row.word_id
+        )
+        if not old.is_file():
+            if expected in matches:
+                old = expected
+                row.video_path = str(old)
+            elif len(matches) == 1:
+                old = matches[0]
+                row.video_path = str(old)
+        rows_by_path[old].append(row)
+
+    moved = []
+    try:
+        for source in files:
+            status = source.relative_to(root).parts[0]
+            if status not in drive_service.VIDEO_STATUSES:
+                continue
+            rows = rows_by_path.get(source, [])
+            word_id = rows[0].word_id if rows else None
+            target = drive_service.get_classified_video_path(source, status, word_id)
+            if source != target:
+                await asyncio.to_thread(move_video_file, source, target)
+                moved.append((source, target))
+                for row in rows:
+                    row.video_path = str(target)
+        await db.commit()
+    except Exception:
+        for source, target in reversed(moved):
+            await asyncio.to_thread(move_video_file, target, source)
+        await db.rollback()
+        raise
 
 
 app = FastAPI(lifespan=lifespan)
@@ -254,8 +293,21 @@ async def admin_logout(session: AdminSession = Depends(require_admin), db: Async
 
 
 @app.get("/admin/videos")
-def admin_videos(_: AdminSession = Depends(require_admin)):
-    return JSONResponse(drive_service.list_admin_videos(), headers={"Cache-Control": "no-store"})
+async def admin_videos(
+    _: AdminSession = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    submissions = await db.execute(select(Submission.video_path, Submission.word_id))
+    words_by_path = {Path(path).resolve(): word_id for path, word_id in submissions}
+    root = Path(drive_service.get_video_storage_path()).resolve()
+    videos = await asyncio.to_thread(drive_service.list_admin_videos)
+    for video in videos:
+        # The submission is authoritative; filenames support legacy/orphan videos.
+        word_id = words_by_path.get(
+            (root / video["path"]).resolve(), drive_service.video_word_id(root / video["path"])
+        )
+        video["reference_word"] = WORDS_BY_ID.get(word_id)
+    return JSONResponse(videos, headers={"Cache-Control": "no-store"})
 
 
 def admin_video_path(path: str) -> Path:
@@ -274,6 +326,9 @@ def admin_video(path: str, _: AdminSession = Depends(require_admin)):
 
 def move_video_file(source: Path, target: Path) -> None:
     with drive_service.storage_lock:
+        if target.exists() or target.is_symlink():
+            raise FileExistsError("Une vidéo porte déjà ce nom dans ce dossier")
+        target.parent.mkdir(parents=True, exist_ok=True)
         source.rename(target)
 
 
@@ -282,20 +337,22 @@ async def classify_video(body: VideoClassification, _: AdminSession = Depends(re
     async with _moderation_lock:
         source = admin_video_path(body.path)
         root = Path(drive_service.get_video_storage_path()).resolve()
-        relative = source.relative_to(root)
-        target = root / body.status / Path(*relative.parts[1:])
+        rows = [
+            row for row in (await db.execute(select(Submission))).scalars()
+            if Path(row.video_path).resolve() == source
+        ]
+        word_id = rows[0].word_id if rows else None
+        try:
+            target = drive_service.get_classified_video_path(source, body.status, word_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
         if source != target:
-            if target.exists():
+            try:
+                await asyncio.to_thread(move_video_file, source, target)
+            except FileExistsError:
                 raise HTTPException(409, "Une vidéo porte déjà ce nom dans ce dossier")
-            # Validate the destination too, including any parent symlinks.
-            if not target.resolve().is_relative_to(root / body.status):
-                raise HTTPException(400, "Dossier de destination invalide")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            rows = (await db.execute(select(Submission))).scalars()
             for row in rows:
-                if Path(row.video_path).resolve() == source:
-                    row.video_path = str(target)
-            await asyncio.to_thread(move_video_file, source, target)
+                row.video_path = str(target)
             try:
                 await db.commit()
             except Exception:
