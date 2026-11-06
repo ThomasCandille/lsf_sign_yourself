@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import CameraView, { CameraViewHandle } from "./CameraView";
 import { Word, LeaderboardEntry } from "../types";
 import { uploadSign, fetchLeaderboard } from "../api";
+import posthog, { posthogLog } from "../posthog";
 import "./SigningScreen.css";
 
 type Phase =
@@ -65,11 +66,14 @@ export default function SigningScreen({
   }, []);
 
   const discardRecording = useCallback(() => {
+    if (recordedBlob) {
+      posthog?.capture("recording_discarded", { word_id: word.id });
+    }
     clearTimer();
     setRecordedBlob(null);
     setErrorMessage("");
     setPhase(isCameraReady ? "ready" : "loading");
-  }, [clearTimer, isCameraReady]);
+  }, [clearTimer, isCameraReady, recordedBlob, word.id]);
 
   const handleCameraReady = useCallback(() => {
     setIsCameraReady(true);
@@ -131,6 +135,8 @@ export default function SigningScreen({
   }
 
   function startRecording() {
+    posthog?.capture("recording_started", { word_id: word.id });
+    posthogLog.info("recording started", { word_id: word.id });
     setPhase("recording");
     cameraRef.current?.startRecording();
     timerRef.current = setTimeout(async () => {
@@ -140,6 +146,8 @@ export default function SigningScreen({
           throw new Error("empty-video");
         }
         setRecordedBlob(blob);
+        posthog?.capture("recording_completed", { word_id: word.id });
+        posthogLog.info("recording completed", { word_id: word.id });
         setPhase("review");
       } catch {
         setErrorMessage("La vidéo est vide ou illisible. Réessayez.");
@@ -156,6 +164,8 @@ export default function SigningScreen({
     setErrorMessage("");
     try {
       const { count } = await uploadSign(word.id, pseudo, recordedBlob);
+      posthog?.capture("sign_upload_succeeded", { word_id: word.id });
+      posthogLog.info("sign upload succeeded", { word_id: word.id });
       onSigned(count);
       setRecordedBlob(null);
       setPhase("success");
@@ -171,6 +181,11 @@ export default function SigningScreen({
       isUploadingRef.current = false;
       setIsUploading(false);
     }
+  }
+
+  function handleChangeWord() {
+    posthog?.capture("word_changed", { word_id: word.id });
+    onChangeWord();
   }
 
   async function handleNextWord() {
@@ -299,7 +314,7 @@ export default function SigningScreen({
                 </button>
                 <button
                   className="btn btn-secondary btn-large"
-                  onClick={onChangeWord}
+                  onClick={handleChangeWord}
                 >
                   Changer de mot
                 </button>
