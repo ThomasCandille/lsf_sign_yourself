@@ -12,3 +12,7 @@ backend/videos
 
 frontend/.env
 frontend/build
+
+backend/tests/__pycache__
+
+*/tests

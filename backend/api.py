@@ -1,3 +1,5 @@
+import asyncio
+import hashlib
 import os
 import re
 import secrets
@@ -9,8 +11,10 @@ from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from pathlib import Path
+from typing import Literal
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -18,7 +22,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from database import init_db, get_db, Score, Submission
+from database import init_db, get_db, AsyncSessionLocal, AdminSession, Score, Submission
 from words import WORDS, WORDS_BY_ID
 from profanity import is_vulgar
 import drive as drive_service
@@ -28,7 +32,11 @@ MAX_VIDEO_BYTES = int(os.getenv("MAX_VIDEO_BYTES", str(25 * 1024 * 1024)))
 MAX_REQUEST_BYTES = MAX_VIDEO_BYTES + 1024 * 1024
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "120"))
-ADMIN_DOWNLOAD_TOKEN = os.getenv("ADMIN_DOWNLOAD_TOKEN", "")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+ADMIN_SESSION_SECONDS = 8 * 60 * 60
+_admin_login_attempts: dict[str, deque[float]] = defaultdict(deque)
+_moderation_lock = asyncio.Lock()
 WEBM_MAGIC = b"\x1a\x45\xdf\xa3"
 MP4_FTYP_MARKER = b"ftyp"
 ALLOWED_VIDEO_TYPES = {"video/webm", "video/mp4"}
@@ -48,7 +56,60 @@ def _csv_env(name: str, default: str) -> list[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    drive_service.prepare_video_storage()
+    async with AsyncSessionLocal() as db:
+        await organize_video_storage(db)
     yield
+
+
+async def organize_video_storage(db: AsyncSession) -> None:
+    """Migrate sorted files and repair DB paths, including interrupted old moves."""
+    root = Path(drive_service.get_video_storage_path()).resolve()
+    files = await asyncio.to_thread(drive_service.list_video_files)
+    files_by_name = defaultdict(list)
+    for path in files:
+        files_by_name[path.name].append(path)
+    rows_by_path = defaultdict(list)
+    for row in (await db.execute(select(Submission))).scalars():
+        old = Path(row.video_path).resolve()
+        if not old.is_relative_to(root):
+            continue
+        matches = files_by_name.get(old.name, []) or files_by_name.get(
+            drive_service.opaque_video_name(old.name), []
+        )
+        status = old.relative_to(root).parts[0]
+        expected = drive_service.get_classified_video_path(
+            old, status if status in drive_service.VIDEO_STATUSES else "en_attente", row.word_id
+        )
+        if not old.is_file():
+            if expected in matches:
+                old = expected
+                row.video_path = str(old)
+            elif len(matches) == 1:
+                old = matches[0]
+                row.video_path = str(old)
+        rows_by_path[old].append(row)
+
+    moved = []
+    try:
+        for source in files:
+            status = source.relative_to(root).parts[0]
+            if status not in drive_service.VIDEO_STATUSES:
+                continue
+            rows = rows_by_path.get(source, [])
+            word_id = rows[0].word_id if rows else None
+            target = drive_service.get_classified_video_path(source, status, word_id)
+            if source != target:
+                await asyncio.to_thread(move_video_file, source, target)
+                moved.append((source, target))
+                for row in rows:
+                    row.video_path = str(target)
+        await db.commit()
+    except Exception:
+        for source, target in reversed(moved):
+            await asyncio.to_thread(move_video_file, target, source)
+        await db.rollback()
+        raise
 
 
 app = FastAPI(lifespan=lifespan)
@@ -66,7 +127,7 @@ app.add_middleware(
     ),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Admin-Token"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -176,19 +237,129 @@ def validate_video_upload(video: UploadFile, video_bytes: bytes) -> None:
         raise HTTPException(400, "Fichier vidéo invalide")
 
 
-def require_admin_download_token(request: Request) -> None:
-    if not ADMIN_DOWNLOAD_TOKEN:
-        raise HTTPException(404, "Téléchargement admin non configuré")
+def token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
+
+async def require_admin(request: Request, db: AsyncSession = Depends(get_db)) -> AdminSession:
     authorization = request.headers.get("authorization", "")
-    supplied_token = ""
-    if authorization.lower().startswith("bearer "):
-        supplied_token = authorization[7:].strip()
-    if not supplied_token:
-        supplied_token = request.headers.get("x-admin-token", "").strip()
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Connexion administrateur requise")
+    session = await db.get(AdminSession, token_hash(authorization[7:].strip()))
+    if session is None or session.expires_at <= int(time.time()):
+        raise HTTPException(401, "Session expirée. Reconnectez-vous.")
+    return session
 
-    if not secrets.compare_digest(supplied_token, ADMIN_DOWNLOAD_TOKEN):
-        raise HTTPException(401, "Accès admin refusé")
+
+class AdminLogin(BaseModel):
+    username: str = Field(max_length=256)
+    password: str = Field(max_length=1024)
+
+
+class VideoClassification(BaseModel):
+    path: str = Field(max_length=1024)
+    status: Literal["en_attente", "bon", "pas_bon"]
+
+
+@app.post("/admin/login")
+async def admin_login(body: AdminLogin, request: Request, db: AsyncSession = Depends(get_db)):
+    if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+        raise HTTPException(503, "Configurez ADMIN_USERNAME et ADMIN_PASSWORD côté backend")
+    host = request.client.host if request.client else "unknown"
+    attempts = _admin_login_attempts[host]
+    now = time.monotonic()
+    while attempts and now - attempts[0] >= 300:
+        attempts.popleft()
+    if len(attempts) >= 5:
+        raise HTTPException(429, "Trop de tentatives. Réessayez dans 5 minutes.")
+    attempts.append(now)
+    username_ok = secrets.compare_digest(token_hash(body.username), token_hash(ADMIN_USERNAME))
+    password_ok = secrets.compare_digest(token_hash(body.password), token_hash(ADMIN_PASSWORD))
+    if not (username_ok and password_ok):
+        raise HTTPException(401, "Identifiant ou mot de passe incorrect")
+    attempts.clear()
+    token = secrets.token_urlsafe(32)
+    await db.execute(delete(AdminSession).where(AdminSession.expires_at <= int(time.time())))
+    db.add(AdminSession(token_hash=token_hash(token), expires_at=int(time.time()) + ADMIN_SESSION_SECONDS))
+    await db.commit()
+    return JSONResponse({"token": token}, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/admin/logout")
+async def admin_logout(session: AdminSession = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    await db.delete(session)
+    await db.commit()
+    return {"ok": True}
+
+
+@app.get("/admin/videos")
+async def admin_videos(
+    _: AdminSession = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    submissions = await db.execute(select(Submission.video_path, Submission.word_id))
+    words_by_path = {Path(path).resolve(): word_id for path, word_id in submissions}
+    root = Path(drive_service.get_video_storage_path()).resolve()
+    videos = await asyncio.to_thread(drive_service.list_admin_videos)
+    for video in videos:
+        # The submission is authoritative; filenames support legacy/orphan videos.
+        word_id = words_by_path.get(
+            (root / video["path"]).resolve(), drive_service.video_word_id(root / video["path"])
+        )
+        video["reference_word"] = WORDS_BY_ID.get(word_id)
+    return JSONResponse(videos, headers={"Cache-Control": "no-store"})
+
+
+def admin_video_path(path: str) -> Path:
+    try:
+        return drive_service.get_admin_video(path)
+    except ValueError:
+        raise HTTPException(400, "Chemin vidéo invalide")
+    except FileNotFoundError:
+        raise HTTPException(404, "Vidéo introuvable")
+
+
+@app.get("/admin/video")
+def admin_video(path: str, _: AdminSession = Depends(require_admin)):
+    return FileResponse(admin_video_path(path), headers={"Cache-Control": "no-store"})
+
+
+def move_video_file(source: Path, target: Path) -> None:
+    with drive_service.storage_lock:
+        if target.exists() or target.is_symlink():
+            raise FileExistsError("Une vidéo porte déjà ce nom dans ce dossier")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(target)
+
+
+@app.post("/admin/classify")
+async def classify_video(body: VideoClassification, _: AdminSession = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    async with _moderation_lock:
+        source = admin_video_path(body.path)
+        root = Path(drive_service.get_video_storage_path()).resolve()
+        rows = [
+            row for row in (await db.execute(select(Submission))).scalars()
+            if Path(row.video_path).resolve() == source
+        ]
+        word_id = rows[0].word_id if rows else None
+        try:
+            target = drive_service.get_classified_video_path(source, body.status, word_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        if source != target:
+            try:
+                await asyncio.to_thread(move_video_file, source, target)
+            except FileExistsError:
+                raise HTTPException(409, "Une vidéo porte déjà ce nom dans ce dossier")
+            for row in rows:
+                row.video_path = str(target)
+            try:
+                await db.commit()
+            except Exception:
+                await asyncio.to_thread(move_video_file, target, source)
+                await db.rollback()
+                raise
+        return {"ok": True, "path": str(target.relative_to(root))}
 
 
 @app.get("/words")
@@ -270,12 +441,12 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/admin/storage")
-def get_storage_status(_: None = Depends(require_admin_download_token)):
+def get_storage_status(_: AdminSession = Depends(require_admin)):
     return drive_service.get_video_storage_stats()
 
 
 @app.get("/admin/videos.zip")
-def download_videos_archive(_: None = Depends(require_admin_download_token)):
+def download_videos_archive(_: AdminSession = Depends(require_admin)):
     archive_path, video_count = drive_service.create_videos_archive()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return FileResponse(

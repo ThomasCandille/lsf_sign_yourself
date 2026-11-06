@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import ReviewWorkspace from "./components/ReviewWorkspace";
+
 import ConsentModal from "./components/ConsentModal";
 import PseudoModal from "./components/PseudoModal";
 import SigningScreen from "./components/SigningScreen";
@@ -6,7 +8,17 @@ import { fetchWords } from "./api";
 import { Word } from "./types";
 import "./App.css";
 
+const REVIEW_PATH = (process.env.REACT_APP_REVIEW_PATH || "/espace-6f2c9a74b1e8").replace(/\/+$/, "");
+
 export default function App() {
+  const path = window.location.pathname.replace(/\/+$/, "");
+  if (path === REVIEW_PATH) {
+    return <ReviewWorkspace />;
+  }
+  return <PublicApp />;
+}
+
+function PublicApp() {
   const [step, setStep] = useState<
     "consent" | "declined" | "pseudo" | "signing"
   >("consent");

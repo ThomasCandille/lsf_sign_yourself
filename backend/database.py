@@ -22,6 +22,12 @@ class Score(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class AdminSession(Base):
+    __tablename__ = "admin_sessions"
+    token_hash = Column(String, primary_key=True)
+    expires_at = Column(Integer, nullable=False)
+
+
 class Submission(Base):
     __tablename__ = "submissions"
     id = Column(Integer, primary_key=True, autoincrement=True)

@@ -8,7 +8,7 @@ Une fois accepté, l'utilisation de la caméra est demandée. La page affiche la
 
 Une vidéo correspondant à un mot précis apparaît et un timer démarre. L'utilisateur effectue le geste pendant 2 secondes, puis peut revoir, refaire, supprimer ou envoyer sa vidéo.
 
-La vidéo brute validée est ensuite enregistrée dans l'espace de stockage du projet avec le nom du mot correspondant. Pour rendre l'expérience ludique, un classement affiche le nombre de gestes effectués par utilisateur.
+La vidéo brute validée est ensuite enregistrée dans l'espace de stockage du projet avec un identifiant opaque, dans le sous-dossier du mot correspondant. Pour rendre l'expérience ludique, un classement affiche le nombre de gestes effectués par utilisateur.
 
 ## Stockage des vidéos
 
@@ -26,28 +26,40 @@ Depuis `backend/`, cela crée donc `backend/videos`. Ce dossier est ignoré par 
 
 La conversion utilise FFmpeg via la dépendance Python `imageio-ffmpeg`.
 
-Pour récupérer les vidéos depuis l'API, définissez un token admin :
+## Administration et classement
+
+Définissez les deux codes dans `backend/.env` (ou dans les variables du service backend en production) :
 
 ```bash
-ADMIN_DOWNLOAD_TOKEN=un-token-long-et-secret
+ADMIN_USERNAME=votre-identifiant
+ADMIN_PASSWORD=votre-mot-de-passe-long-et-secret
 ```
 
-Puis téléchargez toutes les vidéos en zip :
+L'adresse du frontend est configurable à la compilation via `REACT_APP_REVIEW_PATH` (par défaut `/espace-6f2c9a74b1e8`). Définissez cette variable dans `frontend/.env` ou dans le service de build puis reconstruisez le frontend. L'ancien chemin `/admin` affiche désormais le site public. Les fichiers de l'écran sont `ReviewWorkspace.tsx` et `ReviewWorkspace.css` et l'écran est affiché uniquement à cette adresse.
 
-```bash
-curl -L \
-  -H "Authorization: Bearer $ADMIN_DOWNLOAD_TOKEN" \
-  http://localhost:8000/admin/videos.zip \
-  -o lsf-videos.zip
+Redémarrez le backend puis ouvrez `/espace-6f2c9a74b1e8` sur le site frontend. Les codes sont vérifiés uniquement côté backend ; aucune variable `REACT_APP_` ne doit les contenir. Utilisez HTTPS en production.
+
+L'administrateur peut lire les vidéos, choisir **Bon** ou **Pas bon**, et corriger un classement, y compris remettre une vidéo en attente. Les trois dossiers sont créés sous `VIDEO_STORAGE_PATH` :
+
+```text
+videos/
+  en_attente/
+    bonjour/
+  bon/
+    bonjour/
+    merci/
+  pas_bon/
+    bonjour/
+    merci/
 ```
 
-Pour vérifier le dossier utilisé et le nombre de vidéos :
+Les nouvelles vidéos arrivent dans `en_attente/<mot>/` avec un nom opaque (`<identifiant>.mp4`), sans pseudo ni mot dans le nom du fichier. Après tri, elles sont rangées par mot dans `bon/<mot>/` ou `pas_bon/<mot>/`. Un retour en attente les replace dans `en_attente/<mot>/`. Les vidéos existantes sont réorganisées et renommées au prochain démarrage, avec mise à jour des chemins en base. Les vidéos sans entrée en base conservent le mot via leur sous-dossier ; un mot non identifiable est placé dans `inconnu/`. Le ZIP conserve les sous-dossiers par mot. Au démarrage, les anciennes vidéos MP4/WebM à la racine (ou dans les anciens sous-dossiers) sont déplacées dans `en_attente/`, avec mise à jour de leurs chemins en base. Un conflit de noms arrête la migration sans écraser le fichier existant. Sauvegardez le stockage et la base avant le premier déploiement.
 
-```bash
-curl \
-  -H "Authorization: Bearer $ADMIN_DOWNLOAD_TOKEN" \
-  http://localhost:8000/admin/storage
-```
+Le bouton **Télécharger les 3 dossiers (ZIP)** conserve cette arborescence et inclut les dossiers vides. Les fichiers sont déplacés physiquement dans le volume persistant : une récupération directe du volume conserve également leur classement.
+
+Les sessions admin durent 8 heures et sont conservées en base ; la déconnexion les révoque. Le navigateur garde le jeton uniquement en mémoire : recharger la page demande une nouvelle connexion. Les vidéos et le ZIP nécessitent une session valide. Cinq échecs de connexion par adresse IP entraînent une attente de 5 minutes (compteur en mémoire par processus). L'ancien `ADMIN_DOWNLOAD_TOKEN` est remplacé par la connexion admin.
+
+Pour un accès API, envoyez `POST /admin/login` avec un JSON `{"username":"…","password":"…"}`, puis le jeton reçu dans l'en-tête `Authorization: Bearer <token>` aux routes `/admin/videos`, `/admin/storage` ou `/admin/videos.zip`. `POST /admin/logout` révoque ce jeton.
 
 ## Déploiement Render
 
@@ -63,7 +75,8 @@ Configuration recommandée :
 ```bash
 VIDEO_STORAGE_PATH=/var/data/videos
 DATABASE_URL=sqlite+aiosqlite:////var/data/lsf.db
-ADMIN_DOWNLOAD_TOKEN=un-token-long-et-secret
+ADMIN_USERNAME=votre-identifiant
+ADMIN_PASSWORD=votre-mot-de-passe-long-et-secret
 ALLOWED_HOSTS=nom-du-backend.onrender.com
 ALLOWED_ORIGINS=https://url-du-frontend.onrender.com
 ```
@@ -80,11 +93,4 @@ cd backend && uvicorn api:app --host 0.0.0.0 --port $PORT
 REACT_APP_API_BASE_URL=https://url-du-backend.onrender.com
 ```
 
-Ensuite, pour récupérer les vidéos depuis Render :
-
-```bash
-curl -L \
-  -H "Authorization: Bearer $ADMIN_DOWNLOAD_TOKEN" \
-  https://url-du-backend.onrender.com/admin/videos.zip \
-  -o lsf-videos.zip
-```
+Ensuite, ouvrez `/espace-6f2c9a74b1e8` sur le frontend pour classer les vidéos et télécharger les trois dossiers dans une archive ZIP. Configurez l'hébergement frontend pour servir `index.html` sur `/espace-6f2c9a74b1e8` (réécriture SPA).
