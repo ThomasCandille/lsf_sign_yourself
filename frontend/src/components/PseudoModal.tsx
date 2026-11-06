@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { checkPseudo } from "../api";
+import posthog from "../posthog";
 import "./Modal.css";
 
 interface Props {
@@ -70,6 +71,7 @@ export default function PseudoModal({ onConfirm }: Props) {
     setError("");
     try {
       await checkPseudo(trimmed);
+      posthog?.capture("pseudo_confirmed");
       onConfirm(trimmed);
     } catch (err: any) {
       const requestError = getPseudoRequestError(err);

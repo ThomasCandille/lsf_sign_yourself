@@ -12,6 +12,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "axios": "^1.18.1",
+    "posthog-js": "^1.447.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-scripts": "5.0.1",

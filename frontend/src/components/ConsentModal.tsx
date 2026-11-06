@@ -1,4 +1,5 @@
 import React from "react";
+import posthog from "../posthog";
 import "./Modal.css";
 
 const tensorExampleImage = `${process.env.PUBLIC_URL}/lsf-tenseur-exemple.png`;
@@ -53,10 +54,22 @@ export default function ConsentModal({ onAccept, onDecline }: Props) {
         </figure>
 
         <div className="modal-actions">
-          <button className="btn btn-primary" onClick={onAccept}>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              posthog?.capture("consent_accepted");
+              onAccept();
+            }}
+          >
             J'ai compris et je contribue
           </button>
-          <button className="btn btn-secondary" onClick={onDecline}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              posthog?.capture("consent_declined");
+              onDecline();
+            }}
+          >
             Je ne participe pas
           </button>
         </div>

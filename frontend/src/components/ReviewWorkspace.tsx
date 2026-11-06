@@ -1,6 +1,7 @@
 import axios from "axios";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { adminRequest } from "../api";
+import posthog from "../posthog";
 import { Word } from "../types";
 import "./ReviewWorkspace.css";
 
@@ -90,6 +91,7 @@ export default function ReviewWorkspace() {
         method: "POST", data: { username, password },
       });
       setToken(data.token);
+      posthog?.capture("admin_login_succeeded");
       setPassword("");
     } catch (error) { handleError(error); }
     finally { setBusy(false); }
@@ -104,6 +106,9 @@ export default function ReviewWorkspace() {
         method: "POST", data: { path: current.path, status: nextStatus },
       });
       await refresh();
+      posthog?.capture("video_classification_succeeded", {
+        moderation_status: nextStatus,
+      });
       setSelected("");
     } catch (error) { handleError(error); }
     finally { setBusy(false); }
@@ -119,6 +124,7 @@ export default function ReviewWorkspace() {
       link.href = url;
       link.download = "lsf-videos.zip";
       link.click();
+      posthog?.capture("video_archive_downloaded");
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) { handleError(error); }
     finally { setDownloading(false); }
@@ -129,6 +135,7 @@ export default function ReviewWorkspace() {
     setError("");
     try {
       await adminRequest(token, "/admin/logout", { method: "POST" });
+      posthog?.capture("admin_logout_succeeded");
       setToken("");
       setVideos([]);
       setSelected("");
