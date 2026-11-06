@@ -26,6 +26,20 @@ Depuis `backend/`, cela crée donc `backend/videos`. Ce dossier est ignoré par 
 
 La conversion utilise FFmpeg via la dépendance Python `imageio-ffmpeg`.
 
+## Démarrage en local
+
+Installez les dépendances du backend dans un environnement virtuel avant de lancer
+les services :
+
+```bash
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install -r backend/requirements.txt
+npm run start-all
+```
+
+Le script backend utilise `python -m uvicorn` plutôt que le binaire `uvicorn`
+directement afin de rester fonctionnel lorsque le projet est déplacé.
+
 ## Administration et classement
 
 Définissez les deux codes dans `backend/.env` (ou dans les variables du service backend en production) :

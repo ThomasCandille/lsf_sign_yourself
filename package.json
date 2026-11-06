@@ -10,7 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "prettier": "prettier --write \"**/*.{js,ts,json,md}\"",
     "frontend": "cd frontend && npm start",
-    "backend": "cd backend && .venv/bin/uvicorn api:app --reload --port 8000",
+    "backend": "cd backend && .venv/bin/python -m uvicorn api:app --port 8000",
     "start-all": "concurrently --names \"frontend,backend\" --prefix-colors \"cyan,yellow\" \"npm run frontend\" \"npm run backend\""
   },
   "devDependencies": {
