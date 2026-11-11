@@ -36,7 +36,7 @@ WORDS = [
 
     {"id": "france", "label": "France", "video_url": f"{LSF_DICO_VIDEO_BASE}/france.mp4"},
     {"id": "ville", "label": "Ville", "video_url": f"{LSF_DICO_VIDEO_BASE}/ville.mp4"},
-    {"id": "pays", "label": "Pays", "video_url": f"{LSF_DICO_VIDEO_BASE}/pays.mp4"},
+    {"id": "pays", "label": "Pays", "video_url": f"{ELIX_VIDEO_BASE}/pays_nm_2_1_6.mp4"},
     {"id": "ici", "label": "Ici", "video_url": f"{ELIX_VIDEO_BASE}/ici.mp4"},
     {"id": "la-bas", "label": "Là-bas", "video_url": f"{ELIX_VIDEO_BASE}/la-bas_adv_1_1.mp4"},
     {"id": "ou", "label": "Où", "video_url": f"{ELIX_VIDEO_BASE}/ou_adv_1_1.mp4"},
